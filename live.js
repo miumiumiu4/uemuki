@@ -86,14 +86,22 @@
   // 歩数：ショートカットで届いた歩数と、アプリで歩いた記録の多い方をその日の歩数にする
   async function loadStats() {
     const uid = S.user.id;
-    const [daily, walks] = await Promise.all([
+    const [daily, posts] = await Promise.all([
       q(sb.from('daily_steps').select('day,steps').eq('user_id', uid)),
-      q(sb.from('posts').select('steps,created_at').eq('user_id', uid).eq('kind', 'walk'))
+      q(sb.from('posts').select('kind,steps,created_at').eq('user_id', uid))
     ]);
-    const byDay = {};
-    walks.forEach(w => { const d = dayOf(w.created_at); byDay[d] = (byDay[d] || 0) + (w.steps || 0); });
-    daily.forEach(r => { byDay[r.day] = Math.max(byDay[r.day] || 0, r.steps); });
-    S.stats = { today: byDay[today()] || 0, total: Object.values(byDay).reduce((a, b) => a + b, 0) };
+    const byDay = {}, active = new Set();
+    posts.forEach(w => {
+      const d = dayOf(w.created_at); active.add(d);
+      if (w.kind === 'walk') byDay[d] = (byDay[d] || 0) + (w.steps || 0);
+    });
+    daily.forEach(r => { byDay[r.day] = Math.max(byDay[r.day] || 0, r.steps); if (r.steps > 0) active.add(r.day); });
+    // 連続記録：今日（まだなら昨日）からさかのぼって、歩数か投稿がある日が何日続いているか
+    let streak = 0;
+    const d = new Date(today() + 'T12:00:00+09:00');
+    if (!active.has(today())) d.setDate(d.getDate() - 1);
+    while (active.has(d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }))) { streak++; d.setDate(d.getDate() - 1); }
+    S.stats = { today: byDay[today()] || 0, total: Object.values(byDay).reduce((a, b) => a + b, 0), streak, doneToday: active.has(today()) };
   }
 
   // スマホの歩数（ヘルスケア／Health Connect）を、直近7日分まとめて送る
@@ -141,7 +149,7 @@
         <p class="muted" style="margin-bottom:0">体重などの体の数字は、最初は自分だけに見えます。見せたい項目だけ、あとで選べます。</p>
       </form>
       ${mode === 'login' ? '<p style="text-align:center"><button class="link" id="forgot">パスワードを忘れたとき</button></p>' : ''}
-      <p class="foot">ずっと無料です</p>`;
+      <p class="foot">ずっと無料です・<a href="privacy.html" style="color:inherit">プライバシーと利用のきまり</a></p>`;
     view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => renderLogin(b.dataset.mode));
     if ($('#forgot')) $('#forgot').onclick = openForgot;
     $('#auth').onsubmit = async e => {
@@ -217,7 +225,9 @@
       const pct = Math.min(100, Math.round(doneKm / goal.km * 100));
       view.innerHTML = `
         <div class="card today">
-          <div><div class="muted">今日のあなた</div><div class="big">${num(S.stats.today)}<small>歩</small></div></div>
+          <div><div class="muted">今日のあなた</div><div class="big">${num(S.stats.today)}<small>歩</small></div>
+            ${S.stats.streak ? `<span class="pill sun">${S.stats.streak}日つづいています</span>` : '<span class="muted" style="font-size:11px">今日の一歩を記録しよう</span>'}
+            ${S.stats.streak && !S.stats.doneToday ? '<div class="muted" style="font-size:11px">今日の記録でつながります</div>' : ''}</div>
           <div><div class="muted">みんなで目標</div><div style="font-weight:800">${goal.name} ${pct}%</div>
             <div class="goalbar"><i style="width:${pct}%"></i></div>
             <div class="muted" style="font-size:11px">みんなで${num(doneKm)}km・あと${num(Math.max(0, goal.km - doneKm))}km</div></div>
@@ -806,7 +816,9 @@
         <p style="margin-bottom:0">上を向いて、一緒に歩いていきましょう。</p>
       </div>
       ${S.profile.is_admin ? '<div class="section-title">見守り役</div><button class="btn ghost" id="reports">届いた通報を見る</button>' : ''}
-      <button class="btn ghost" id="logout" style="margin-top:20px">ログアウト</button>
+      <button class="btn sun" id="invite" style="margin-top:20px">仲間を招待する</button>
+      <button class="btn ghost" id="logout" style="margin-top:12px">ログアウト</button>
+      <p style="text-align:center;margin-top:16px"><a class="link" href="privacy.html">プライバシーと利用のきまり</a>　<button class="link" id="leave">退会する</button></p>
       <p class="foot">${esc(S.user.email)}</p>`;
     view.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { meChart = b.dataset.ck; renderMe(); });
     view.querySelectorAll('[data-pub]').forEach(b => b.onclick = async () => {
@@ -818,6 +830,30 @@
     if ($('#shortcut')) $('#shortcut').onclick = openShortcut;
     $('#logout').onclick = async () => { await sb.auth.signOut(); };
     if ($('#reports')) $('#reports').onclick = openReports;
+    $('#invite').onclick = invite;
+    $('#leave').onclick = leave;
+  }
+
+  // 仲間を招待：スマホの「共有」で、LINEやメールにそのまま送れる
+  async function invite() {
+    const url = location.origin + location.pathname;
+    const text = `${S.profile.display_name}さんから、うえむきへのお誘いです。みんなの一歩をスタンプで応援し合う、ずっと無料のアプリです。一緒に歩きませんか。`;
+    try {
+      if (navigator.share) { await navigator.share({ title: 'うえむき', text, url }); return; }
+      await navigator.clipboard.writeText(`${text}\n${url}`); toast('お誘いの文をコピーしました。LINEなどに貼ってください');
+    } catch (e) { if (e?.name !== 'AbortError') toast('うまくいきませんでした'); }
+  }
+
+  // 退会：その人の記録をすべて消す（ストアの決まりで必要）
+  async function leave() {
+    if (!confirm('退会すると、投稿・スタンプ・コメント・体の記録がすべて消え、元に戻せません。よろしいですか？')) return;
+    const word = prompt('確認のため「退会」と入力してください');
+    if (word === null) return;
+    if (word.trim() !== '退会') { toast('「退会」と入力されなかったので、やめました'); return; }
+    const { error } = await sb.rpc('delete_my_account');
+    if (error) { toast(error.code === 'PGRST202' ? '退会の仕組みは準備中です。見守り役に連絡してください' : 'うまくいきませんでした'); return; }
+    try { await sb.auth.signOut({ scope: 'local' }); } catch {}
+    toast('退会しました。これまでありがとうございました');
   }
 
   async function openReports() {
