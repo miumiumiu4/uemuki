@@ -610,7 +610,7 @@
   function openSteps() {
     openSheet(`
       <h2 style="margin:0 0 4px;font-size:18px">今日の歩数</h2>
-      <div class="muted" style="margin-bottom:12px">iPhoneは「ヘルスケア」、Androidは「Google Fit」や歩数計アプリに出ている今日の歩数を入れてください。何度入れ直しても大丈夫です。</div>
+      <div class="muted" style="margin-bottom:12px">iPhoneは「ヘルスケア」、Androidは「Google Fit」や「Samsung Health」（Galaxyの人）に出ている今日の歩数を入れてください。何度入れ直しても大丈夫です。</div>
       <form id="sform">
         <input class="input" name="steps" type="number" inputmode="numeric" min="0" max="200000" required placeholder="例：6500" style="font-size:24px;text-align:center">
         <button class="btn">送る</button>
