@@ -794,6 +794,7 @@
         ${rows.length > 1 ? chart(rows, meChart, keys[meChart][1], keys[meChart][2]) + `<div class="muted">${rows.length}回の記録で ${diff > 0 ? '+' : ''}${diff}${keys[meChart][1]}</div>`
           : `<div class="muted" style="padding:16px 0">${rows.length ? `いまは ${rows[0][meChart]}${keys[meChart][1]}。2回目から線で見られます。` : 'まだ記録がありません。'}</div>`}
         <button class="btn" id="addRec" style="margin-top:12px">今日の体の記録をつける</button>
+        ${records.length ? '<p style="text-align:center;margin:10px 0 0"><button class="link" id="recList">これまでの記録を見る・直す</button></p>' : ''}
       </div>
 
       <div class="section-title">みんなに見せるもの</div>
@@ -827,6 +828,7 @@
     });
     $('#editName').onclick = openProfile;
     $('#addRec').onclick = openRecord;
+    if ($('#recList')) $('#recList').onclick = () => openRecordList(records);
     if ($('#shortcut')) $('#shortcut').onclick = openShortcut;
     $('#logout').onclick = async () => { await sb.auth.signOut(); };
     if ($('#reports')) $('#reports').onclick = openReports;
@@ -887,6 +889,29 @@
         try { await q(sb.from('profiles').update(patch).eq('id', S.user.id)); Object.assign(S.profile, patch); closeSheet(); renderTab(); } catch (err) { fail(err); }
       };
     });
+  }
+
+  // これまでの体の記録（新しい順）。まちがえた記録は消せる
+  function openRecordList(records) {
+    const v = (x, u) => x == null ? '' : `${x}${u}`;
+    const draw = el => {
+      const rows = [...records].reverse();
+      el.innerHTML = `<h2 style="margin:0 0 8px;font-size:18px">これまでの体の記録</h2>` + (rows.length ? rows.map(r => `
+        <div class="row" style="align-items:flex-start">
+          <span><span class="r-main">${+r.day.slice(5, 7)}月${+r.day.slice(8)}日</span><br>
+            <span class="r-sub">${[v(r.weight, 'kg'), r.muscle != null ? '筋肉' + r.muscle + 'kg' : '', r.fat != null ? '体脂肪' + r.fat + '%' : '', r.bp_sys != null ? `血圧${r.bp_sys}/${r.bp_dia ?? '-'}` : '', r.pulse != null ? '脈' + r.pulse : ''].filter(Boolean).join('・')}</span>
+            ${r.note ? `<br><span class="r-sub">${esc(r.note)}</span>` : ''}</span>
+          <button class="link" data-del="${r.id}">消す</button>
+        </div>`).join('') : '<div class="muted">記録はありません</div>');
+      el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('この記録を消しますか？')) return;
+        try {
+          await q(sb.from('body_records').delete().eq('id', b.dataset.del));
+          records = records.filter(r => r.id !== b.dataset.del); draw(el); renderTab();
+        } catch (e) { fail(e); }
+      });
+    };
+    openSheet('', draw);
   }
 
   function openRecord() {
