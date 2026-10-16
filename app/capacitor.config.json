@@ -1,0 +1,13 @@
+{
+  "appId": "jp.uemuki.app",
+  "appName": "うえむき",
+  "webDir": "www",
+  "backgroundColor": "#f5f6f8",
+  "server": {
+    "url": "https://miumiumiu4.github.io/uemuki/",
+    "allowNavigation": [
+      "miumiumiu4.github.io",
+      "aekkmwgehdkmypnbpjei.supabase.co"
+    ]
+  }
+}

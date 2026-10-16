@@ -22,6 +22,10 @@
   };
   const q = async p => { const { data, error } = await p; if (error) throw error; return data; };
 
+  // ストア版（iPhone・Android）のときだけ、スマホの歩数を自動で読む
+  const NATIVE = !!window.Capacitor?.isNativePlatform?.();
+  const Health = NATIVE && window.Capacitor.registerPlugin ? window.Capacitor.registerPlugin('HealthPlugin') : null;
+
   const S = { tab: 'home', homeSeg: 'feed', user: null, profile: null, settings: null, blocks: new Set(), stats: { today: 0, total: 0 } };
 
   let timers = [];
@@ -92,6 +96,27 @@
     S.stats = { today: byDay[today()] || 0, total: Object.values(byDay).reduce((a, b) => a + b, 0) };
   }
 
+  // スマホの歩数（ヘルスケア／Health Connect）を、直近7日分まとめて送る
+  let lastSync = 0, healthOk = false;
+  async function syncHealth(force) {
+    if (!Health || !S.user) return false;
+    if (!force && Date.now() - lastSync < 5 * 60000) return healthOk;
+    lastSync = Date.now();
+    try {
+      const { available } = await Health.isHealthAvailable();
+      if (!available) return (healthOk = false);
+      await Health.requestHealthPermissions({ permissions: ['READ_STEPS'] });
+      const now = new Date();
+      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+      const { aggregatedData } = await Health.queryAggregated({ startDate: from.toISOString(), endDate: now.toISOString(), dataType: 'steps', bucket: 'day' });
+      const rows = (aggregatedData || []).filter(r => r.value > 0).map(r => ({
+        user_id: S.user.id, day: dayOf(r.startDate), steps: Math.min(200000, Math.round(r.value)), updated_at: new Date().toISOString()
+      }));
+      if (rows.length) await q(sb.from('daily_steps').upsert(rows));
+      return (healthOk = true);
+    } catch (e) { console.error(e); return (healthOk = false); }
+  }
+
   // ---- ログイン ----
   function renderLogin(mode = 'new') {
     tabbar(false); setTitle('うえむき');
@@ -146,6 +171,7 @@
     setTitle('みんなの一歩');
     view.innerHTML = '<div class="muted">読み込み中…</div>';
     try {
+      await syncHealth();
       const [, groupSteps] = await Promise.all([loadStats(), q(sb.rpc('group_total_steps'))]);
       const goal = { name: '日本縦断', km: 3000 };
       const doneKm = Math.round(groupSteps * 0.0007);
@@ -541,12 +567,13 @@
   async function renderWalk() {
     setTitle('歩く');
     if (!W) {
-      try { await loadStats(); } catch (e) { fail(e); }
+      try { await syncHealth(); await loadStats(); } catch (e) { fail(e); }
       view.innerHTML = `
         <div class="card" style="text-align:center">
           <div class="muted">今日のあなた</div>
           <div class="big">${num(S.stats.today)}<small>歩</small></div>
-          <button class="btn ghost" id="enterSteps" style="margin-top:10px">今日の歩数を入れる</button>
+          ${healthOk ? '<div class="muted" style="margin-top:8px">スマホの歩数が自動で入ります</div>' : ''}
+          <button class="${healthOk ? 'link' : 'btn ghost'}" id="enterSteps" style="margin-top:10px">${healthOk ? '手で直す' : '今日の歩数を入れる'}</button>
         </div>
         <div style="margin-top:20px"><button class="btn sun" id="start">歩き始める</button></div>
         <p class="muted" style="margin-top:12px">歩いている間はこの画面を開いたままにしてください。歩き始めと終わりの200mは地図から消し、公開は歩き終わってからです。</p>`;
@@ -727,11 +754,11 @@
         <div class="row"><span>脈・服薬・体調メモ<br><span class="r-sub">いつも自分だけ</span></span><span class="muted">非公開</span></div>
       </div>
 
-      <div class="section-title">歩数を自動で送る（詳しい人向け・iPhone）</div>
+      ${NATIVE ? '' : `<div class="section-title">歩数を自動で送る（詳しい人向け・iPhone）</div>
       <div class="card">
         <div class="muted">ふだんは「歩く」の「今日の歩数を入れる」で大丈夫です。iPhoneの「ショートカット」に詳しい人は、毎晩自動で送る設定もできます。</div>
         <button class="btn ghost" id="shortcut" style="margin-top:10px">設定のしかたを見る</button>
-      </div>
+      </div>`}
 
       <div class="section-title">うえむきが生まれたきっかけ</div>
       <div class="card">
@@ -749,7 +776,7 @@
     });
     $('#editName').onclick = openProfile;
     $('#addRec').onclick = openRecord;
-    $('#shortcut').onclick = openShortcut;
+    if ($('#shortcut')) $('#shortcut').onclick = openShortcut;
     $('#logout').onclick = async () => { await sb.auth.signOut(); };
     if ($('#reports')) $('#reports').onclick = openReports;
   }
@@ -860,7 +887,7 @@
     S.tab = b.dataset.tab; window.scrollTo(0, 0); renderTab();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && S.user && S.tab === 'home' && $('#sheet').hidden) renderTab();
+    if (document.visibilityState === 'visible' && S.user && (S.tab === 'home' || S.tab === 'walk') && !W && $('#sheet').hidden) renderTab();
   });
 
   async function start(session) {
@@ -878,7 +905,7 @@
   }
   sb.auth.onAuthStateChange((_ev, session) => { setTimeout(() => start(session), 0); });
 
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && !NATIVE) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }
 })();

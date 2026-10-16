@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">うえむき</string>
+    <string name="title_activity_main">うえむき</string>
+    <string name="package_name">jp.uemuki.app</string>
+    <string name="custom_url_scheme">jp.uemuki.app</string>
+</resources>
