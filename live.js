@@ -37,6 +37,8 @@
     console.error(e);
     toast(navigator.onLine ? 'うまくいきませんでした。もう一度どうぞ' : '電波がないようです');
   }
+  // 困ったときに原因が分かるよう、画面の下に小さく理由を出す
+  const why = e => `<div class="muted" style="font-size:11px;margin-top:12px;word-break:break-all">理由：${esc([e?.code, e?.message, e?.details, e?.hint].filter(Boolean).join(' / ') || String(e))}</div>`;
   const setTitle = t => { $('#title').textContent = t; };
   const tabbar = on => { $('.tabbar').hidden = !on; };
 
@@ -152,7 +154,7 @@
         <div id="homeBody"><div class="muted">読み込み中…</div></div>`;
       view.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { S.homeSeg = b.dataset.seg; renderHome(); });
       if (S.homeSeg === 'feed') await renderFeed($('#homeBody')); else await renderBoard($('#homeBody'));
-    } catch (e) { fail(e); view.innerHTML = '<div class="muted">読み込めませんでした。下に引っぱるか、タブを押し直してください。</div>'; }
+    } catch (e) { fail(e); view.innerHTML = '<div class="muted">読み込めませんでした。タブを押し直してください。</div>' + why(e); }
   }
 
   let feedCache = [];
