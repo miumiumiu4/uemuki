@@ -4,7 +4,7 @@
   if (!C.supabaseUrl || !C.supabaseAnonKey) return;
   const D = window.UEMUKI_DATA;
   const sb = window.supabase.createClient(C.supabaseUrl, C.supabaseAnonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'uemuki.auth' }
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit', storageKey: 'uemuki.auth' }
   });
 
   const $ = (s, el = document) => el.querySelector(s);
@@ -140,8 +140,10 @@
         <button class="btn">${mode === 'new' ? 'はじめる' : 'ログイン'}</button>
         <p class="muted" style="margin-bottom:0">体重などの体の数字は、最初は自分だけに見えます。見せたい項目だけ、あとで選べます。</p>
       </form>
+      ${mode === 'login' ? '<p style="text-align:center"><button class="link" id="forgot">パスワードを忘れたとき</button></p>' : ''}
       <p class="foot">ずっと無料です</p>`;
     view.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => renderLogin(b.dataset.mode));
+    if ($('#forgot')) $('#forgot').onclick = openForgot;
     $('#auth').onsubmit = async e => {
       e.preventDefault();
       const f = e.target, btn = $('button.btn', f);
@@ -164,6 +166,43 @@
         btn.disabled = false;
       }
     };
+  }
+
+  // パスワードを忘れたとき：登録したメールに「作り直し」のリンクを送る
+  function openForgot() {
+    openSheet(`
+      <h2 style="margin:0 0 4px;font-size:18px">パスワードを作り直す</h2>
+      <div class="muted" style="margin-bottom:12px">登録したメールアドレスに、作り直し用のリンクを送ります。メールのリンクを押すと、新しいパスワードを決める画面が開きます。</div>
+      <form id="fform">
+        <label class="muted">登録したメールアドレス</label>
+        <input class="input" name="email" type="email" required autocomplete="email" value="${esc($('#auth')?.email?.value || '')}">
+        <button class="btn">リンクを送る</button>
+      </form>`, el => {
+      $('#fform', el).onsubmit = async e => {
+        e.preventDefault();
+        const btn = $('button.btn', e.target); btn.disabled = true;
+        const { error } = await sb.auth.resetPasswordForEmail(e.target.email.value.trim(), { redirectTo: location.origin + location.pathname });
+        if (error) { btn.disabled = false; toast(/rate|limit/i.test(error.message) ? '送りすぎのため、少し時間をおいてください' : 'うまくいきませんでした'); return; }
+        closeSheet(); toast('メールを送りました。届いたリンクを押してください');
+      };
+    });
+  }
+
+  function openNewPassword() {
+    openSheet(`
+      <h2 style="margin:0 0 12px;font-size:18px">新しいパスワード</h2>
+      <form id="npform">
+        <label class="muted">新しいパスワード（8文字以上）</label>
+        <input class="input" name="pw" type="password" required minlength="8" autocomplete="new-password">
+        <button class="btn">決める</button>
+      </form>`, el => {
+      $('#npform', el).onsubmit = async e => {
+        e.preventDefault();
+        const { error } = await sb.auth.updateUser({ password: e.target.pw.value });
+        if (error) { toast(/different|same/i.test(error.message) ? '前と違うパスワードにしてください' : 'うまくいきませんでした'); return; }
+        closeSheet(); toast('新しいパスワードにしました');
+      };
+    });
   }
 
   // ---- ホーム ----
@@ -903,7 +942,12 @@
     renderTab();
     if (S.profile.display_name === 'なまえ未設定') openProfile(true);
   }
-  sb.auth.onAuthStateChange((_ev, session) => { setTimeout(() => start(session), 0); });
+  sb.auth.onAuthStateChange((ev, session) => {
+    setTimeout(async () => {
+      await start(session);
+      if (ev === 'PASSWORD_RECOVERY') { try { history.replaceState(null, '', location.pathname); } catch {} openNewPassword(); }
+    }, 0);
+  });
 
   if ('serviceWorker' in navigator && !NATIVE) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
