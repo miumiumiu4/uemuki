@@ -160,7 +160,7 @@
   let feedCache = [];
   async function loadFeed() {
     const rows = await q(sb.from('posts')
-      .select('id,user_id,kind,steps,km,minutes,label,detail,route_path,created_at,profiles(display_name,area),cheers(stamp,user_id),comments(id,body,user_id,created_at,profiles(display_name))')
+      .select('id,user_id,kind,steps,km,minutes,label,detail,route_path,created_at,profiles!posts_user_id_fkey(display_name,area),cheers(stamp,user_id),comments(id,body,user_id,created_at,profiles(display_name))')
       .order('created_at', { ascending: false })
       .order('created_at', { referencedTable: 'comments', ascending: true })
       .limit(60));
