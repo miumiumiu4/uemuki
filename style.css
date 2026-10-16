@@ -155,3 +155,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
   background: var(--ink); color: var(--surface); padding: 10px 18px; border-radius: 99px; font-size: 14px; z-index: 30; white-space: nowrap;
 }
 .foot { text-align: center; font-size: 11px; color: var(--ink-2); margin-top: 28px; }
+
+/* forms (本番) */
+.input { display: block; width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; margin: 4px 0 12px; }
+textarea.input { resize: vertical; }
+.link { border: 0; background: none; padding: 0; color: var(--ink-2); font-size: 13px; text-decoration: underline; }
+.code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.btn:disabled { opacity: .5; }
+.tabbar[hidden] { display: none; }

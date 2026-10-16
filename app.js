@@ -1,4 +1,7 @@
 (() => {
+  // 本番の設定があるときは live.js が動くので、見本はお休み
+  const CFG = window.UEMUKI_CONFIG || {};
+  if (CFG.supabaseUrl && CFG.supabaseAnonKey) return;
   const D = window.UEMUKI_DATA;
   const $ = (s, el = document) => el.querySelector(s);
   const view = $('#view');
