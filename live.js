@@ -520,11 +520,12 @@
         <div class="card" style="text-align:center">
           <div class="muted">今日のあなた</div>
           <div class="big">${num(S.stats.today)}<small>歩</small></div>
-          <div class="muted" style="margin-top:8px">iPhoneのショートカットを設定すると、毎日の歩数が自動で入ります（マイページから）。</div>
+          <button class="btn ghost" id="enterSteps" style="margin-top:10px">今日の歩数を入れる</button>
         </div>
         <div style="margin-top:20px"><button class="btn sun" id="start">歩き始める</button></div>
         <p class="muted" style="margin-top:12px">歩いている間はこの画面を開いたままにしてください。歩き始めと終わりの200mは地図から消し、公開は歩き終わってからです。</p>`;
       $('#start').onclick = startWalk;
+      $('#enterSteps').onclick = openSteps;
       return;
     }
     view.innerHTML = `
@@ -550,6 +551,32 @@
     W.paint = paint;
     $('#stop').onclick = () => stopWalk(true);
     $('#cancel').onclick = () => { if (confirm('この歩きは記録しません。よろしいですか？')) stopWalk(false); };
+  }
+
+  // 今日の歩数を手で入れる（iPhoneもAndroidも同じ）
+  function openSteps() {
+    openSheet(`
+      <h2 style="margin:0 0 4px;font-size:18px">今日の歩数</h2>
+      <div class="muted" style="margin-bottom:12px">iPhoneは「ヘルスケア」、Androidは「Google Fit」や歩数計アプリに出ている今日の歩数を入れてください。何度入れ直しても大丈夫です。</div>
+      <form id="sform">
+        <input class="input" name="steps" type="number" inputmode="numeric" min="0" max="200000" required placeholder="例：6500" style="font-size:24px;text-align:center">
+        <button class="btn">送る</button>
+      </form>`, el => {
+      $('#sform', el).onsubmit = async e => {
+        e.preventDefault();
+        const steps = Math.round(+e.target.steps.value);
+        if (!(steps >= 0 && steps <= 200000)) { toast('歩数を確かめてください'); return; }
+        const before = S.stats.total;
+        try {
+          await q(sb.from('daily_steps').upsert({ user_id: S.user.id, day: today(), steps, updated_at: new Date().toISOString() }));
+          await loadStats();
+          const opened = D.hints.filter(h => h.at > before && h.at <= S.stats.total);
+          closeSheet(); renderTab();
+          toast(opened.length ? '新しいヒントカードが開きました' : `お楽しみ様。${num(steps)}歩を記録しました`);
+        } catch (err) { fail(err); }
+      };
+      setTimeout(() => $('input', el)?.focus(), 100);
+    });
   }
 
   async function startWalk() {
@@ -674,9 +701,9 @@
         <div class="row"><span>脈・服薬・体調メモ<br><span class="r-sub">いつも自分だけ</span></span><span class="muted">非公開</span></div>
       </div>
 
-      <div class="section-title">歩数を自動で送る（iPhone）</div>
+      <div class="section-title">歩数を自動で送る（詳しい人向け・iPhone）</div>
       <div class="card">
-        <div class="muted">iPhoneの「ショートカット」アプリに一度設定すると、毎晩その日の歩数が届きます。</div>
+        <div class="muted">ふだんは「歩く」の「今日の歩数を入れる」で大丈夫です。iPhoneの「ショートカット」に詳しい人は、毎晩自動で送る設定もできます。</div>
         <button class="btn ghost" id="shortcut" style="margin-top:10px">設定のしかたを見る</button>
       </div>
 
