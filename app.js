@@ -176,8 +176,9 @@
       <div class="section-title">瞑想の時間</div>
       <div class="card">
         <div class="muted">これまで ${state.mindMinutes}分</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
-          ${[3, 5, 10].map(m => `<button class="btn ghost" data-mind="${m}">${m}分</button>`).join('')}
+        <div class="muted" style="margin-top:4px">時間を選ぶと、そのままタイマーが始まります。</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">
+          ${[3, 5, 10, 15, 20, 30, 45, 60].map(m => `<button class="btn ghost" data-mind="${m}" style="padding:12px 0">${m}分</button>`).join('')}
         </div>
       </div>
 

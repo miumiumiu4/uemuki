@@ -50,7 +50,8 @@
     $('.sheet-body').scrollTop = 0;
     if (onMount) onMount($('#sheetContent'));
   }
-  function hideSheet() { clearTimers(); $('#sheet').hidden = true; $('#sheetContent').innerHTML = ''; }
+  const cleanups = [];
+  function hideSheet() { clearTimers(); cleanups.splice(0).forEach(f => { try { f(); } catch {} }); $('#sheet').hidden = true; $('#sheetContent').innerHTML = ''; }
   function closeSheet() {
     if ($('#sheet').hidden) return;
     hideSheet();
@@ -376,8 +377,9 @@
       <div class="section-title">瞑想の時間</div>
       <div class="card">
         <div class="muted">これまで ${mindMin}分</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
-          ${[3, 5, 10].map(m => `<button class="btn ghost" data-mind="${m}">${m}分</button>`).join('')}
+        <div class="muted" style="margin-top:4px">時間を選ぶと、そのままタイマーが始まります。</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">
+          ${[3, 5, 10, 15, 20, 30, 45, 60].map(m => `<button class="btn ghost" data-mind="${m}" style="padding:12px 0">${m}分</button>`).join('')}
         </div>
       </div>
 
@@ -457,29 +459,52 @@
     });
   }
 
+  // 終わりの合図（やさしい鐘の音と振動）
+  function chime(ctx) {
+    try {
+      [0, 1.6].forEach(at => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 528;
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+        g.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + at + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 3);
+        o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + 3.1);
+      });
+    } catch {}
+    try { navigator.vibrate?.([300, 200, 300]); } catch {}
+  }
+
   function openMind(min) {
+    let ctx = null;
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); } catch {}
     openSheet(`
       <h2 style="margin:0;font-size:18px">瞑想 ${min}分</h2>
-      <div class="muted">目を閉じて、呼吸だけに気持ちを向けます。終わると記録されます。</div>
-      <div class="breath"><div class="circle" id="mclock" style="width:160px;height:160px;font-size:28px">${min}:00</div></div>
-      <button class="btn ghost" id="mstop">ここで終える</button>`, el => {
+      <div class="muted">目を閉じて、呼吸だけに気持ちを向けます。終わると鐘が鳴り、記録されます。画面は消えないようにしてあります。</div>
+      <div class="breath"><div class="circle" id="mclock" style="width:170px;height:170px;font-size:30px">${min}:00</div></div>
+      <button class="btn ghost" id="mstop">ここで終える</button>`, async el => {
       const start = Date.now();
-      let done = false;
+      let done = false, lock = null;
+      try { lock = await navigator.wakeLock?.request('screen'); } catch {}
+      cleanups.push(() => { lock?.release(); ctx?.close(); });
       const finish = async () => {
         if (done) return; done = true;
         clearTimers();
+        try { await lock?.release(); } catch {}
         const used = Math.min(min, Math.round((Date.now() - start) / 60000));
-        $('#mstop', el).remove();
+        $('#mstop', el)?.remove();
         if (used < 1) { $('#mclock', el).textContent = 'また今度'; return; }
+        if (used >= min && ctx) chime(ctx);
         $('#mclock', el).textContent = 'お楽しみ様';
         try { await q(sb.from('posts').insert({ kind: 'mind', minutes: used, label: `瞑想 ${used}分` })); renderTab(); } catch (e) { fail(e); }
       };
-      timers.push(setInterval(() => {
+      const tick = () => {
         const left = Math.max(0, min * 60 - Math.floor((Date.now() - start) / 1000));
-        $('#mclock', el).textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+        const c = $('#mclock', el); if (!c) return;
+        c.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
         if (left <= 0) finish();
-      }, 1000));
-      $('#mstop', el).onclick = finish;
+      };
+      timers.push(setInterval(tick, 1000));
+      $('#mstop', el).onclick = () => { if (confirm('ここで終えて、ここまでの時間を記録しますか？')) finish(); };
     });
   }
 
