@@ -225,7 +225,7 @@
           <button class="btn" style="width:auto;padding:10px 16px">送る</button>
         </form>
         <div style="display:flex;gap:16px;justify-content:flex-end;margin-top:16px">
-          ${isMe ? '<button class="link" id="del">この投稿を消す</button>' : '<button class="link" id="hide">この人を表示しない</button><button class="link" id="rep">通報する</button>'}
+          ${isMe ? '<button class="link" id="del">この投稿を消す</button>' : `${S.profile.is_admin ? '<button class="link" id="del">見守り役として消す</button>' : ''}<button class="link" id="hide">この人を表示しない</button><button class="link" id="rep">通報する</button>`}
         </div>`;
       el.querySelectorAll('[data-stamp]').forEach(b => b.onclick = async () => {
         const s = b.dataset.stamp;
@@ -250,11 +250,12 @@
           p.comments.push(c); draw(el);
         } catch (err) { fail(err); }
       };
-      if (isMe) $('#del', el).onclick = async () => {
+      const delBtn = $('#del', el);
+      if (delBtn) delBtn.onclick = async () => {
         if (!confirm('この投稿を消しますか？')) return;
         try { await q(sb.from('posts').delete().eq('id', p.id)); closeSheet(); renderTab(); toast('消しました'); } catch (e) { fail(e); }
       };
-      else {
+      if (!isMe) {
         $('#hide', el).onclick = async () => {
           if (!confirm(`${who(p)}さんの投稿を表示しないようにしますか？（相手には伝わりません）`)) return;
           try { await q(sb.from('blocks').insert({ blocked_id: p.user_id })); S.blocks.add(p.user_id); closeSheet(); renderTab(); } catch (e) { fail(e); }
@@ -328,7 +329,7 @@
           <button class="btn" style="width:auto;padding:10px 16px">送る</button>
         </form>
         <div style="display:flex;gap:16px;justify-content:flex-end;margin-top:16px">
-          ${t.user_id === S.user.id ? '<button class="link" id="del">この話題を消す</button>' : '<button class="link" id="rep">通報する</button>'}
+          ${t.user_id === S.user.id ? '<button class="link" id="del">この話題を消す</button>' : `${S.profile.is_admin ? '<button class="link" id="del">見守り役として消す</button>' : ''}<button class="link" id="rep">通報する</button>`}
         </div>`;
       $('#rform', el).onsubmit = async e => {
         e.preventDefault();
@@ -713,6 +714,7 @@
         <p>健康を祈るだけでなく、毎日の一歩を見せ合い、応援し合える場所をつくりたい。そんな思いから、うえむきは生まれました。</p>
         <p style="margin-bottom:0">上を向いて、一緒に歩いていきましょう。</p>
       </div>
+      ${S.profile.is_admin ? '<div class="section-title">見守り役</div><button class="btn ghost" id="reports">届いた通報を見る</button>' : ''}
       <button class="btn ghost" id="logout" style="margin-top:20px">ログアウト</button>
       <p class="foot">${esc(S.user.email)}</p>`;
     view.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { meChart = b.dataset.ck; renderMe(); });
@@ -724,6 +726,24 @@
     $('#addRec').onclick = openRecord;
     $('#shortcut').onclick = openShortcut;
     $('#logout').onclick = async () => { await sb.auth.signOut(); };
+    if ($('#reports')) $('#reports').onclick = openReports;
+  }
+
+  async function openReports() {
+    openSheet('<div class="muted">読み込み中…</div>', async el => {
+      try {
+        const rows = await q(sb.from('reports').select('id,target_type,target_id,reason,created_at,profiles(display_name)').order('created_at', { ascending: false }).limit(50));
+        const kind = { post: '投稿', thread: '掲示板の話題', comment: 'コメント', reply: '返信', user: '人' };
+        el.innerHTML = `<h2 style="margin:0 0 12px;font-size:18px">届いた通報</h2>` + (rows.length ? rows.map(r => `
+          <div class="comment"><b>${esc(kind[r.target_type] || r.target_type)}</b>${esc(r.reason || '理由なし')}
+          <div class="muted">${esc(r.profiles?.display_name || '仲間')}から・${ago(r.created_at)}${r.target_type === 'post' ? ` ・<button class="link" data-open="${r.target_id}">投稿を見る</button>` : ''}</div></div>`).join('') : '<div class="muted">通報はまだありません</div>');
+        el.querySelectorAll('[data-open]').forEach(b => b.onclick = async () => {
+          if (!feedCache.some(x => x.id === b.dataset.open)) await loadFeed();
+          if (!feedCache.some(x => x.id === b.dataset.open)) { toast('この投稿はもう消えています'); return; }
+          hideSheet(); openPost(b.dataset.open);
+        });
+      } catch (e) { fail(e); }
+    });
   }
 
   function openProfile(first) {
