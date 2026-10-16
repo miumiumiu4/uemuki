@@ -42,12 +42,21 @@
   const setTitle = t => { $('#title').textContent = t; };
   const tabbar = on => { $('.tabbar').hidden = !on; };
 
+  // 開いた画面は「戻る」ボタンでも、スマホの戻る操作でも閉じられる
   function openSheet(html, onMount) {
+    if ($('#sheet').hidden) { try { history.pushState({ sheet: 1 }, ''); } catch {} }
     $('#sheetContent').innerHTML = html;
     $('#sheet').hidden = false;
+    $('.sheet-body').scrollTop = 0;
     if (onMount) onMount($('#sheetContent'));
   }
-  function closeSheet() { clearTimers(); $('#sheet').hidden = true; $('#sheetContent').innerHTML = ''; }
+  function hideSheet() { clearTimers(); $('#sheet').hidden = true; $('#sheetContent').innerHTML = ''; }
+  function closeSheet() {
+    if ($('#sheet').hidden) return;
+    hideSheet();
+    if (history.state?.sheet) history.back();
+  }
+  window.addEventListener('popstate', () => { if (!$('#sheet').hidden) hideSheet(); });
   document.addEventListener('click', e => { if (e.target.closest('[data-close]')) closeSheet(); });
 
   function routeSvg(d, big) {
